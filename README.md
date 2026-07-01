@@ -1,22 +1,25 @@
 # Stock Management Assistant
 
-This repository is a GitHub snapshot of the Codex stock alert agent currently used from the local Codex app.
+This repository is the GitHub-backed version of the user's Codex stock monitoring agent.
 
-## What is included
+It is structured so Codex Cloud can run from repository files rather than relying on hidden local thread context from one laptop.
 
-- `automation.toml`: the live Codex automation definition copied from the local automation store
-- `prompt.md`: the agent prompt extracted into plain text for easier editing
-- `memory.md`: placeholder memory file for future tracked runs
-- `work/`: placeholder project folder
-- `outputs/`: placeholder runtime output folder
+## Repository layout
 
-## Original local source
+- `AGENTS.md`: repo-level instructions Codex should load automatically
+- `config/portfolio.md`: current holdings and user preferences
+- `config/alert-policy.md`: research and decision rules
+- `config/delivery.md`: output and delivery requirements
+- `docs/cloud-setup.md`: how to configure this repo in Codex Cloud
+- `docs/automation-spec.md`: schedule and paste-ready automation prompt
+- `prompt.md`: legacy full prompt copied from the local automation
+- `automation.toml`: snapshot of the local Codex automation definition
+- `memory.md`: repo-local memory placeholder for future cloud usage
 
-- Automation ID: `daily-aggressive-stock-portfolio-recommendations`
-- Local automation store: `C:\Users\Popovtzer lab\.codex\automations\daily-aggressive-stock-portfolio-recommendations`
-- The current local automation is thread-based rather than project-cwd-based, so the agent behavior is primarily defined by the automation prompt and Codex thread context.
+## Current status
 
-## Notes
+This repository is now suitable as a source repo for Codex Cloud tasks, but the cloud automation still needs to be created in the Codex web UI.
 
-- This repo is meant to make the agent portable to GitHub-backed Codex workflows.
-- The current local automation still runs from the Codex app until a cloud/project-backed replacement is created.
+## Important note
+
+The live local automation was thread-based, not project-cwd-based. Because of that, this repo makes the previously implicit context explicit in versioned files under `config/` and `docs/`.
