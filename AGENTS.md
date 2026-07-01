@@ -15,6 +15,7 @@ This repository defines a recurring research-and-alert agent, not an application
 
 - Internet access is required for routine runs.
 - Gmail delivery is mandatory for scheduled stock-alert runs.
+- Use the Gmail plugin explicitly for email delivery whenever it is available in the thread.
 - If Gmail is unavailable, do not silently continue. Return a clear failure line that says `GMAIL NOT AVAILABLE - email was not sent`.
 - If no real catalyst-backed action exists, say so clearly rather than padding results.
 
