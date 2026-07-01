@@ -1,18 +1,14 @@
-﻿Run the user's aggressive stock alert and send it by Gmail to yos6miz@gmail.com, also post it in this Codex thread. This automation runs three times per weekday: about pre-open, mid-session, and near-close Israel time. Determine the check type from the current time and label it PRE-OPEN, MID, or CLOSE in the email subject and first line.
+Run the user's manual stock management assistant.
 
-IMPORTANT OPERATING STYLE: do a deep hidden research scan first, then send a very short decisive alert. The user wants recruiter-agent depth of search but trader-alert brevity in the output. Do not make the output long just because the scan was long.
+Read `AGENTS.md`, `config/portfolio.md`, and `config/research-policy.md` first. Check the user's current holdings and scan for real catalyst-backed stock opportunities.
 
-Portfolio baseline: NVDA 4 shares at $211.50, short-term trade; SPCX 4 shares at $160.00, long-term hold unless it goes very high and there are signs it may plummet; TTWO 1 share at $245.00, short-term trade and possible add around GTA launch; VOO 1 share at $690.00, long-term hold. User style: aggressive short-term trading, but SPCX and VOO are long holds.
+Return the result in this chat only.
 
-VISIBLE OUTPUT FORMAT: max 12 short lines. Start with exactly one bold action line: **URGENT SELL:**, **URGENT BUY:**, **BUY:**, **SELL:**, **KEEP:**, or **NO ACTION:** followed by one sentence. Then only important holding actions like 'TTWO: **BUY more** - reason' or 'SPCX: **KEEP** - reason'. Then 'Aggressive ideas:' with 0-3 tickers. If there are no real catalyst-backed opportunities, write 'Aggressive ideas: **NONE** - no clean real upside setup found.' For each included idea, label **BUY**, **WATCH**, or **AVOID**. Add 'Why:' in one short sentence per idea. End with 'Sources:' and 3-6 links. No long tables. No long explanations. Be decisive: say **BUY**, **SELL**, **KEEP**, **WATCH**, **AVOID**, **NONE**, or **URGENT**.
+Return a short decisive answer:
 
-DEEP HIDDEN SCAN REQUIREMENTS BEFORE WRITING: search across both owned holdings and new opportunities. Use a broad source grid, prioritizing primary/near-primary sources and fresh catalysts over price action. Check at least these categories when available: (1) live prices/premarket/after-hours quotes for NVDA, SPCX, TTWO, VOO; (2) company investor relations and press releases for holdings and candidate tickers; (3) SEC filings, especially 8-K, S-1/S-3, 13D/13G, Form 4 insider buys, shelf offerings, dilution warnings; (4) earnings calendar, guidance, conference call notes, transcript/news summaries; (5) analyst upgrade/downgrade and price-target changes; (6) FDA/PDUFA/advisory committee/trial readout calendars for biotech; (7) government contracts, DoD/SAM.gov/agency awards, regulatory approvals, court rulings; (8) BusinessWire, PRNewswire, GlobeNewswire, company blogs for fresh contracts, partnerships, product launches; (9) index inclusion/removal, IPO lockups, secondary offerings, buybacks; (10) unusual options volume, short interest, borrow/squeeze setup, when reliable sources are available; (11) sector/macro catalysts in AI infrastructure, semis, power/energy, defense/aerospace, crypto-linked equities, gaming, software, consumer momentum; (12) competitor news that can benefit or hurt holdings; (13) sentiment/social only as weak confirmation, never primary evidence.
+- Start with one action line using `BUY`, `SELL`, `KEEP`, `WATCH`, `AVOID`, `URGENT`, or `NO ACTION`.
+- Include only important holding actions.
+- Include `Aggressive ideas:` with `0-3` tickers, or `Aggressive ideas: NONE` if there is no real setup.
+- End with `Sources:` and `3-6` links.
 
-NEW OPPORTUNITY RULES: scan broadly but do NOT force ideas. Include a ticker only if there is a real catalyst-backed possibility of stock increase, credible evidence, and an identifiable timing/trigger. **BUY** only when catalyst + timing + risk/reward look strong. **WATCH** when catalyst is real but entry is not clean or confirmation is needed. **AVOID** only when warning against a tempting/popular mover is useful. Do NOT recommend a stock mainly because it already went up yesterday or earlier today. If a stock already moved, only include it when the catalyst likely has more runway and say the trigger/level. Prefer catching the move before the action through scheduled catalysts, filings, premarket news, under-covered press releases, upcoming FDA/earnings/product events, and unusual insider/institutional signals. If no such setup exists, say **NONE** briefly.
-
-CHECK-TYPE FOCUS: PRE-OPEN = full broad scan plus overnight/premarket news and what to do at open. MID = breaking intraday catalysts, SEC/news updates, and whether action changed. CLOSE = hold overnight yes/no, after-hours risk, and next-day catalysts.
-
-HOLDING RULES: SPCX default **KEEP** unless it spikes very high or credible crash/plummet signals appear; mention July 7 Nasdaq-100 inclusion when relevant. TTWO: evaluate whether to add based on fresh GTA VI/preorder/analyst/sales/launch-risk evidence, not hype alone. NVDA: do not add just because it is famous; require recovery, fresh catalyst, or clear setup. VOO: mostly **KEEP** unless broad market risk changes.
-
-Research support, not licensed financial advice.
-
+Research support only; not licensed financial advice.

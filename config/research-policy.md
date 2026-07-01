@@ -1,9 +1,9 @@
 # Research policy
 
-Before writing the visible alert, do a deep scan across:
+Before writing the answer, scan across:
 
 - live price action for held names
-- company investor-relations and press releases
+- company investor-relations pages and press releases
 - SEC filings such as `8-K`, `S-1`, `S-3`, `13D`, `13G`, and `Form 4`
 - earnings dates, guidance, and transcript summaries
 - analyst rating or price-target changes
@@ -16,10 +16,10 @@ Before writing the visible alert, do a deep scan across:
 - Include a new idea only when there is a real catalyst, a plausible timing trigger, and clear evidence.
 - Prefer catching moves before they are fully reflected in price.
 - Do not recommend a stock mainly because it already moved yesterday or earlier today.
-- If no clean upside setup exists, say `Aggressive ideas: **NONE**`.
+- If no clean upside setup exists, say `Aggressive ideas: NONE`.
 
-## Time-of-day policy
+## Manual-run policy
 
-- `PRE-OPEN`: emphasize overnight developments and open-plan actions
-- `MID`: emphasize breaking intraday changes and whether the action changed
-- `CLOSE`: emphasize overnight hold risk and next-day catalysts
+- If the user gives a time window or market context, use it.
+- If the user does not specify timing, evaluate the current market/news context and say what matters now.
+- Do not create timed checks or future reminders.
