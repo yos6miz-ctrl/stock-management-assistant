@@ -14,9 +14,9 @@ This repository defines a recurring research-and-alert agent, not an application
 ## Cloud-task expectations
 
 - Internet access is required for routine runs.
-- Gmail delivery is mandatory for scheduled stock-alert runs.
-- Use the Gmail plugin explicitly for email delivery whenever it is available in the thread.
-- If Gmail is unavailable, do not silently continue. Return a clear failure line that says `GMAIL NOT AVAILABLE - email was not sent`.
+- Primary delivery for Codex Cloud is the run output / Codex inbox, which should surface through the Codex or ChatGPT phone app.
+- Gmail is not available in the current Codex Cloud thread setup. Do not treat Gmail as required for cloud runs.
+- If a Gmail plugin is available in a future thread, it may be used as a secondary delivery path, but the cloud run must still produce the phone-notification-ready output.
 - If no real catalyst-backed action exists, say so clearly rather than padding results.
 
 ## Validation

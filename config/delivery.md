@@ -1,9 +1,10 @@
 # Delivery rules
 
-- Main email target: `yos6miz@gmail.com`
-- Email delivery is required on every scheduled run
-- Also post the exact same result in the Codex run output
-- If Gmail is unavailable, do not skip this quietly. The first line of the run output must be `GMAIL NOT AVAILABLE - email was not sent`.
+- Primary delivery: Codex Cloud run output / Codex inbox for phone notification
+- Email target, if a Gmail plugin is available in a future thread: `yos6miz@gmail.com`
+- The run output is mandatory on every scheduled run
+- Format the first line so it works as a phone notification headline
+- Do not fail the cloud run just because Gmail is unavailable
 
 ## Visible output format
 
