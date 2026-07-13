@@ -22,4 +22,4 @@ Before writing the answer, scan across:
 
 - If the user gives a time window or market context, use it.
 - If the user does not specify timing, evaluate the current market/news context and say what matters now.
-- Do not create timed checks or future reminders.
+- Return the result in the current Codex chat.
