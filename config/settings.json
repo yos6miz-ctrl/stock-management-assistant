@@ -1,0 +1,11 @@
+{
+  "storage_path": "../data/agent-state.json",
+  "log_level": "INFO",
+  "base_currency": "USD",
+  "market_data_provider": "openai",
+  "portfolio_analysis_provider": "openai",
+  "opportunity_research_provider": "openai",
+  "openai_model": "gpt-5.6-sol",
+  "openai_reasoning_effort": "medium",
+  "email_recipient": "yos6miz@gmail.com"
+}

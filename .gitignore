@@ -5,8 +5,6 @@ __pycache__/
 .venv/
 dist/
 build/
-state/
-*.db
-*.db-shm
-*.db-wal
+data/*.json
+!data/.gitkeep
 .env

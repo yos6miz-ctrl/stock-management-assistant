@@ -1,6 +1,7 @@
-"""Cloud investment agent core."""
+"""Cloud investment research and portfolio tracking agent."""
 
-from .store import StateStore
+from .config import AgentConfig, load_config
+from .storage import JsonStateStore
 
-__all__ = ["StateStore"]
-__version__ = "0.1.0"
+__all__ = ["AgentConfig", "JsonStateStore", "load_config"]
+__version__ = "1.0.0"

@@ -1,143 +1,200 @@
-# Cloud Investment Agent
+# Stock Management Assistant
 
-A small, provider-neutral foundation for a cloud investment research agent. It
-has exactly three independently runnable skills:
+A cloud-run Python agent with three independently runnable skills:
 
-1. **Portfolio management** stores holdings and an immutable change history.
-2. **Portfolio research** evaluates every current holding and emits an alert
-   only for a new, supported material development.
-3. **Aggressive opportunity research** evaluates companies outside the
-   portfolio and emits only supported, catalyst-backed opportunities.
+1. Portfolio Tracker
+2. Portfolio Analysis and Recommendation
+3. Aggressive Short-Term Opportunity Scanner
 
-The agent performs research support, portfolio tracking, recommendations, and
-alerts. It does not place trades and has no brokerage integration.
+The agent tracks user-confirmed holdings, researches current information through
+the OpenAI Responses API with web search, produces strict structured outputs,
+and emails only material recommendation changes. It does not connect to a
+brokerage or execute trades.
 
 ## Architecture
 
-All three skills share a persistent state store but do not call one another.
-Portfolio management is the only writer of holdings. The two research skills
-read a versioned portfolio snapshot and write sourced facts, analyses, run
-records, and deduplicated alert events.
-
 ```text
-cloud invoker
-  +-- portfolio skill ---------------+
-  +-- portfolio-research skill -------+-- persistent store
-  +-- opportunities skill ------------+
-              |
-       research provider
-              |
-       alert outbox/sink
+GitHub Actions (only scheduler)
+             |
+             v
+      StockAgentOrchestrator
+             |
+     1. Portfolio Tracker ---------- OpenAI current-price research
+     2. Portfolio Analysis --------- OpenAI holding research
+     3. Opportunity Scanner -------- OpenAI broad-market research
+             |
+             v
+       Material change detector
+        |                  |
+   no changes          material changes
+        |                  |
+   save baseline       Gmail alert, then save baseline
+             \             /
+              JSON state cache
 ```
 
-The current implementation deliberately does not select a market-data API,
-news API, schedule, threshold, alert destination, cloud vendor, or portfolio.
-`ResearchProvider` is the boundary for a future external-information adapter.
-The included JSON provider makes the core testable without fabricating live
-information.
+Each skill remains directly runnable. The orchestrator calls them in dependency
+order and accepts a run as valid only when all three complete against the same
+portfolio revision.
 
-## Requirements
+The shared models keep sourced facts, management claims, estimates, rumors,
+conclusions, catalysts, and recommendations as separate structured fields.
+Provider output is rejected when required holdings, evidence, sources, catalyst
+timing, entry/exit logic, or risk controls are incomplete.
 
-- Python 3.11 or newer
-- No runtime dependencies outside the Python standard library
+## Material-change alerts
 
-## Install
+The last successful valid run is the sole comparison baseline. Email is sent
+only for:
+
+- a holding recommendation changing between `BUY_MORE`, `HOLD`, `REDUCE`, and
+  `SELL`;
+- a candidate newly becoming `AGGRESSIVE_BUY`;
+- an existing `AGGRESSIVE_BUY` becoming `WATCH`, `AVOID`, removed, or otherwise
+  invalidated.
+
+Price and profit/loss changes, explanation wording, candidate rank, new
+`WATCH` candidates, and confidence-only changes do not trigger email.
+
+The first successful run creates a baseline without sending email. Failed or
+incomplete research never replaces the last valid baseline. If an email fails,
+the old baseline is retained so the change can be retried. A notification
+fingerprint prevents normal duplicate delivery.
+
+## Cloud execution
+
+`.github/workflows/stock-agent.yml`:
+
+- is the only scheduler;
+- uses the requested `Asia/Jerusalem` timezone;
+- prevents overlapping runs;
+- restores the last successful JSON state from the GitHub Actions cache;
+- runs every unit test before live research;
+- runs the three-skill orchestrator;
+- saves state only after a successful run.
+
+The checked-in cron expression is the exact requested
+`17 0,6,12,18 * * *`. In standard cron field order, it runs at 00:17, 06:17,
+12:17, and 18:17 Israel time. If the intended times are instead 05:00, 11:00,
+17:00, and 23:00, change it to `0 5,11,17,23 * * *`.
+
+No user computer is involved after the GitHub setup.
+
+## GitHub secrets
+
+Add these required Actions secrets under repository **Settings → Secrets and
+variables → Actions**:
+
+- `OPENAI_API_KEY`
+- `GMAIL_SENDER`
+- `GMAIL_APP_PASSWORD`
+
+`GMAIL_SENDER` must be the Gmail account associated with the app password.
+Alerts are sent only to `yos6miz@gmail.com`.
+
+An optional encrypted `PORTFOLIO_JSON` secret lets the cloud workflow maintain
+the exact confirmed portfolio without committing private holdings to the
+repository. Its value is a JSON array:
+
+```json
+[
+  {
+    "symbol": "EXAMPLE",
+    "quantity": "2",
+    "average_purchase_price": "10.50",
+    "notes": "Optional confirmed note"
+  }
+]
+```
+
+When present, this is treated as the user-approved complete portfolio: changed
+values are corrected, new symbols are added, and omitted symbols are removed.
+Malformed input fails the run before a new valid baseline can be saved. The
+repository contains no real holdings.
+
+## Configuration
+
+`config/settings.json` selects:
+
+- JSON state path and logging level;
+- base portfolio currency;
+- OpenAI for market data, portfolio research, and opportunity research;
+- model `gpt-5.6-sol` with medium reasoning effort;
+- the fixed email recipient.
+
+Credentials are read only from environment variables. The standard-library
+OpenAI adapter calls `POST /v1/responses`, enables web search on every research
+request, and requests strict JSON-schema output. The offline placeholder
+provider remains available for development.
+
+## Local commands
+
+Requirements: Python 3.11 or newer. The runtime has no third-party Python
+dependencies.
 
 ```bash
 python -m pip install -e .
 ```
 
-## Portfolio management
+Manage confirmed positions:
 
 ```bash
-investment-agent --db state/agent.db portfolio add \
-  --symbol SYMBOL --quantity 10 --average-price 25.50 --notes "Research note"
-
-investment-agent --db state/agent.db portfolio update \
-  --symbol SYMBOL --quantity 12
-
-investment-agent --db state/agent.db portfolio remove --symbol SYMBOL
-investment-agent --db state/agent.db portfolio show
+investment-agent portfolio add \
+  --symbol EXAMPLE --quantity 2 --average-purchase-price 10.50
+investment-agent portfolio buy \
+  --symbol EXAMPLE --quantity 1 --purchase-price 12.00
+investment-agent portfolio sell --symbol EXAMPLE --quantity 1
+investment-agent portfolio correct \
+  --symbol EXAMPLE --average-purchase-price 10.75
+investment-agent portfolio remove --symbol EXAMPLE
+investment-agent portfolio show
+investment-agent portfolio history
 ```
 
-Quantities and average prices use decimal arithmetic. Basic calculations are
-cost-basis calculations only; the core never invents a current market price.
-
-## Research runs
-
-Each research skill can run independently:
+Run each skill independently:
 
 ```bash
-investment-agent --db state/agent.db portfolio-research --packet research.json
-investment-agent --db state/agent.db opportunities --packet research.json
-investment-agent --db state/agent.db alerts flush
+investment-agent portfolio track
+investment-agent portfolio-analysis
+investment-agent opportunity-scan
 ```
 
-The packet is supplied by a `ResearchProvider`. Its facts require source
-provenance and confirmation state. Analyses reference those facts by their
-zero-based indexes:
+Run the cloud sequence locally, with required environment variables configured:
 
-```json
-{
-  "portfolio_research": {
-    "SYMBOL": {
-      "facts": [
-        {
-          "category": "filing",
-          "title": "Concise factual title",
-          "detail": "Factual detail only",
-          "event_time": "2026-01-01T00:00:00Z",
-          "confirmation": "confirmed",
-          "source": {
-            "publisher": "Primary source",
-            "url": "https://example.test/source",
-            "retrieved_at": "2026-01-01T01:00:00Z"
-          }
-        }
-      ],
-      "assessment": {
-        "action": "HOLD",
-        "change_summary": "What materially changed",
-        "why_it_matters": "Why the change affects the position",
-        "catalyst": {
-          "description": "Next known catalyst or explicitly unknown",
-          "timing": "Expected timing or explicitly unknown"
-        },
-        "downside_risk": "Main downside risk",
-        "confidence": "MEDIUM",
-        "meaningful": true,
-        "event_id": "stable-provider-event-id",
-        "event_version": "material-version-1",
-        "supporting_fact_indexes": [0]
-      }
-    }
-  },
-  "opportunities": []
-}
+```bash
+investment-agent run-all
 ```
 
-An opportunity uses the same bundle shape and adds a top-level `symbol`.
-Meaningful opportunity alerts require action `BUY`, a catalyst and timing,
-downside risk, confidence, and at least one sourced supporting fact. Owned
-symbols are excluded automatically.
+Inspect local persisted state:
 
-`event_id` identifies the underlying development. `event_version` changes only
-when a genuinely material update occurs. The pair prevents repeated alerts
-while allowing a later material development to be reported.
-
-## Cloud operation
-
-The commands are one-shot processes suitable for a cloud job, container, or
-serverless invocation. Point all invocations at the same durable database and
-run them through a cloud-native invoker; a personal computer does not need to
-remain online. Provider, scheduler, datastore service, secrets, and alert
-delivery choices intentionally remain open.
-
-## Test
-
-PowerShell:
-
-```powershell
-$env:PYTHONPATH = "src"
-python -m unittest discover -s tests -v
+```bash
+investment-agent state
 ```
+
+## Persistence
+
+`JsonStateStore` performs atomic file replacement and stores:
+
+- confirmed positions and their mutation history;
+- performance history;
+- structured portfolio recommendation history;
+- structured opportunity-scan history;
+- independent skill-run records;
+- the last complete valid comparison state;
+- notification fingerprints.
+
+Runtime state and credentials are ignored by Git. In GitHub Actions, a new cache
+is saved only when tests, research, notification handling, and orchestration all
+succeed.
+
+## Tests
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+The deterministic test suite covers portfolio calculations and validation,
+first-run baselining, no-change and price-only runs, recommendation transitions,
+new and downgraded/removed aggressive opportunities, failed/incomplete run
+protection, duplicate suppression, email content, JSON migrations, and OpenAI
+structured-output request/response mapping. Tests never call live APIs.

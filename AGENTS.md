@@ -18,12 +18,16 @@ alert interfaces are infrastructure rather than additional skills.
 - Mark unconfirmed or conflicting information explicitly.
 - Do not emit unsupported or duplicate alerts.
 - Preserve state and portfolio history between runs.
-- Do not commit real holdings, credentials, API keys, alert destinations,
-  schedules, or deployment-specific configuration.
+- Do not commit real holdings, credentials, API keys, or email passwords.
 
 ## Development
 
-- Keep the core provider-neutral until a provider is explicitly selected.
+- Keep the skills provider-neutral. The configured live provider is OpenAI.
 - Prefer Python standard-library dependencies in the core.
+- Use the shared JSON state store for portfolio, performance, recommendation,
+  opportunity, and run history.
+- Keep the placeholder provider available for offline development and tests.
+- Reject incomplete, unsourced, duplicate, or portfolio-conflicting provider
+  output rather than weakening validation.
 - Run `python -m unittest discover -s tests -v` with `PYTHONPATH=src` before
   publishing changes.

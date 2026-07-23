@@ -1,22 +1,83 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from enum import StrEnum
 from typing import Any
-from urllib.parse import urlparse
-
-
-CONFIRMATION_STATES = {"confirmed", "unconfirmed", "conflicting"}
-CONFIDENCE_LEVELS = {"LOW", "MEDIUM", "HIGH"}
-HOLDING_ACTIONS = {"BUY", "HOLD", "SELL", "WAIT"}
-OPPORTUNITY_ACTIONS = {"BUY", "WATCH", "REJECT"}
 
 
 class ValidationError(ValueError):
-    """Raised when supplied portfolio or research data is unsafe to use."""
+    """Raised when user, provider, or persisted data is invalid."""
+
+
+class RunStatus(StrEnum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    UNAVAILABLE = "unavailable"
+
+
+class ProviderStatus(StrEnum):
+    AVAILABLE = "available"
+    INCOMPLETE = "incomplete"
+    UNAVAILABLE = "unavailable"
+
+
+class QuoteStatus(StrEnum):
+    LIVE = "live"
+    DELAYED = "delayed"
+    OUTDATED = "outdated"
+    UNAVAILABLE = "unavailable"
+
+
+class RecommendationAction(StrEnum):
+    NOT_EVALUATED = "not_evaluated"
+    BUY_MORE = "buy_more"
+    HOLD = "hold"
+    REDUCE = "reduce"
+    SELL = "sell"
+
+
+class OpportunityRating(StrEnum):
+    AGGRESSIVE_BUY = "aggressive_buy"
+    WATCH = "watch"
+    AVOID = "avoid"
+
+
+class Confidence(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    NOT_AVAILABLE = "not_available"
+
+
+class CatalystStatus(StrEnum):
+    CONFIRMED = "confirmed"
+    EXPECTED = "expected"
+    ESTIMATED = "estimated"
+    RUMORED = "rumored"
+    UNKNOWN = "unknown"
+
+
+class EvidenceKind(StrEnum):
+    FACT = "fact"
+    MANAGEMENT_CLAIM = "management_claim"
+    ESTIMATE = "estimate"
+    RUMOR = "rumor"
+    CONCLUSION = "conclusion"
+
+
+class SourceAuthority(StrEnum):
+    PRIMARY = "primary"
+    AUTHORITATIVE = "authoritative"
+    SECONDARY = "secondary"
+    ALTERNATIVE = "alternative"
+
+
+class OpportunityRiskClass(StrEnum):
+    LOWER_RISK_AGGRESSIVE = "lower_risk_aggressive"
+    HIGH_RISK = "high_risk"
+    BINARY_SPECULATIVE = "binary_speculative"
 
 
 def utc_now() -> str:
@@ -32,17 +93,26 @@ def normalize_symbol(value: str) -> str:
     return symbol
 
 
-def positive_decimal(value: str | int | float | Decimal, field: str) -> Decimal:
+def decimal_value(
+    value: str | int | float | Decimal,
+    field: str,
+    *,
+    allow_zero: bool = False,
+) -> Decimal:
     try:
         parsed = Decimal(str(value))
     except InvalidOperation as exc:
         raise ValidationError(f"{field} must be a decimal number") from exc
-    if not parsed.is_finite() or parsed <= 0:
-        raise ValidationError(f"{field} must be greater than zero")
+    minimum_valid = parsed >= 0 if allow_zero else parsed > 0
+    if not parsed.is_finite() or not minimum_valid:
+        qualifier = "zero or greater" if allow_zero else "greater than zero"
+        raise ValidationError(f"{field} must be {qualifier}")
     return parsed
 
 
-def decimal_text(value: Decimal) -> str:
+def decimal_text(value: Decimal | None) -> str | None:
+    if value is None:
+        return None
     return format(value.normalize(), "f")
 
 
@@ -50,162 +120,481 @@ def decimal_text(value: Decimal) -> str:
 class Position:
     symbol: str
     quantity: Decimal
-    average_price: Decimal
-    notes: str
-    revision: int
-    created_at: str
-    updated_at: str
+    average_purchase_price: Decimal
+    notes: str = ""
+    created_at: str = ""
+    updated_at: str = ""
 
     @property
-    def cost_basis(self) -> Decimal:
-        return self.quantity * self.average_price
+    def invested_amount(self) -> Decimal:
+        return self.quantity * self.average_purchase_price
 
-    def as_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "symbol": self.symbol,
             "quantity": decimal_text(self.quantity),
-            "average_price": decimal_text(self.average_price),
-            "cost_basis": decimal_text(self.cost_basis),
+            "average_purchase_price": decimal_text(self.average_purchase_price),
+            "invested_amount": decimal_text(self.invested_amount),
             "notes": self.notes,
-            "revision": self.revision,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "Position":
+        return cls(
+            symbol=normalize_symbol(str(value["symbol"])),
+            quantity=decimal_value(value["quantity"], "quantity"),
+            average_purchase_price=decimal_value(
+                value["average_purchase_price"], "average_purchase_price"
+            ),
+            notes=str(value.get("notes", "")),
+            created_at=str(value.get("created_at", "")),
+            updated_at=str(value.get("updated_at", "")),
+        )
 
 
 @dataclass(frozen=True)
 class PortfolioSnapshot:
     revision: int
     positions: tuple[Position, ...]
-
-    def as_dict(self) -> dict[str, Any]:
-        total_cost = sum(
-            (position.cost_basis for position in self.positions), Decimal("0")
-        )
-        return {
-            "revision": self.revision,
-            "positions": [position.as_dict() for position in self.positions],
-            "position_count": len(self.positions),
-            "total_cost_basis": decimal_text(total_cost),
-        }
-
-
-@dataclass(frozen=True)
-class SourceFact:
-    subject: str
-    category: str
-    title: str
-    detail: str
-    event_time: str
-    confirmation: str
-    publisher: str
-    source_url: str
-    retrieved_at: str
-
-    @classmethod
-    def from_dict(cls, subject: str, value: dict[str, Any]) -> "SourceFact":
-        source = value.get("source")
-        if not isinstance(source, dict):
-            raise ValidationError("every fact requires a source object")
-
-        fields = {
-            "category": value.get("category"),
-            "title": value.get("title"),
-            "detail": value.get("detail"),
-            "event_time": value.get("event_time"),
-            "confirmation": value.get("confirmation"),
-            "publisher": source.get("publisher"),
-            "source_url": source.get("url"),
-            "retrieved_at": source.get("retrieved_at"),
-        }
-        for name, item in fields.items():
-            if not isinstance(item, str) or not item.strip():
-                raise ValidationError(f"fact field {name} is required")
-
-        confirmation = fields["confirmation"].strip().lower()
-        if confirmation not in CONFIRMATION_STATES:
-            allowed = ", ".join(sorted(CONFIRMATION_STATES))
-            raise ValidationError(f"confirmation must be one of: {allowed}")
-
-        parsed_url = urlparse(fields["source_url"].strip())
-        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-            raise ValidationError("fact source URL must be an absolute HTTP(S) URL")
-
-        return cls(
-            subject=normalize_symbol(subject),
-            category=fields["category"].strip(),
-            title=fields["title"].strip(),
-            detail=fields["detail"].strip(),
-            event_time=fields["event_time"].strip(),
-            confirmation=confirmation,
-            publisher=fields["publisher"].strip(),
-            source_url=fields["source_url"].strip(),
-            retrieved_at=fields["retrieved_at"].strip(),
-        )
+    generated_at: str
 
     @property
-    def fact_id(self) -> str:
-        canonical = json.dumps(
-            {
-                "subject": self.subject,
-                "category": self.category,
-                "title": self.title,
-                "detail": self.detail,
-                "event_time": self.event_time,
-                "publisher": self.publisher,
-                "source_url": self.source_url,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
+    def total_invested(self) -> Decimal:
+        return sum(
+            (position.invested_amount for position in self.positions),
+            Decimal("0"),
         )
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    def as_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
-            "fact_id": self.fact_id,
-            "subject": self.subject,
-            "category": self.category,
-            "title": self.title,
-            "detail": self.detail,
-            "event_time": self.event_time,
-            "confirmation": self.confirmation,
-            "source": {
-                "publisher": self.publisher,
-                "url": self.source_url,
-                "retrieved_at": self.retrieved_at,
-            },
+            "revision": self.revision,
+            "generated_at": self.generated_at,
+            "position_count": len(self.positions),
+            "total_invested": decimal_text(self.total_invested),
+            "positions": [position.to_dict() for position in self.positions],
         }
 
 
 @dataclass(frozen=True)
-class Assessment:
-    subject: str
-    action: str
-    change_summary: str
-    why_it_matters: str
-    catalyst: str
-    catalyst_timing: str
-    downside_risk: str
-    confidence: str
-    meaningful: bool
-    event_id: str
-    event_version: str
-    supporting_fact_ids: tuple[str, ...]
+class MarketQuote:
+    symbol: str
+    price: Decimal
+    as_of: str
+    source: str
+    status: QuoteStatus
+    currency: str = "USD"
 
-    def as_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
-            "subject": self.subject,
-            "action": self.action,
-            "change_summary": self.change_summary,
-            "why_it_matters": self.why_it_matters,
-            "catalyst": {
-                "description": self.catalyst,
-                "timing": self.catalyst_timing,
-            },
-            "downside_risk": self.downside_risk,
-            "confidence": self.confidence,
-            "meaningful": self.meaningful,
-            "event_id": self.event_id,
-            "event_version": self.event_version,
-            "supporting_fact_ids": list(self.supporting_fact_ids),
+            "symbol": self.symbol,
+            "price": decimal_text(self.price),
+            "as_of": self.as_of,
+            "source": self.source,
+            "status": self.status.value,
+            "currency": self.currency,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "MarketQuote":
+        return cls(
+            symbol=normalize_symbol(str(value["symbol"])),
+            price=decimal_value(value["price"], "price", allow_zero=True),
+            as_of=str(value["as_of"]),
+            source=str(value["source"]),
+            status=QuoteStatus(str(value["status"])),
+            currency=str(value.get("currency", "USD")),
+        )
+
+
+@dataclass(frozen=True)
+class MarketDataBatch:
+    status: ProviderStatus
+    quotes: tuple[MarketQuote, ...]
+    errors: dict[str, str]
+    requested_at: str
+    message: str
+
+
+@dataclass(frozen=True)
+class PositionChange:
+    previous_as_of: str
+    price_change: Decimal
+    price_change_percent: Decimal | None
+    value_change: Decimal
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "previous_as_of": self.previous_as_of,
+            "price_change": decimal_text(self.price_change),
+            "price_change_percent": decimal_text(self.price_change_percent),
+            "value_change": decimal_text(self.value_change),
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "PositionChange":
+        raw_percent = value.get("price_change_percent")
+        return cls(
+            previous_as_of=str(value["previous_as_of"]),
+            price_change=Decimal(str(value["price_change"])),
+            price_change_percent=(
+                Decimal(str(raw_percent)) if raw_percent is not None else None
+            ),
+            value_change=Decimal(str(value["value_change"])),
+        )
+
+
+@dataclass(frozen=True)
+class PositionPerformance:
+    position: Position
+    quote: MarketQuote | None
+    invested_amount: Decimal
+    current_value: Decimal | None
+    profit_loss: Decimal | None
+    return_percent: Decimal | None
+    portfolio_weight_percent: Decimal | None
+    change_since_previous: PositionChange | None
+    market_data_note: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "position": self.position.to_dict(),
+            "quote": self.quote.to_dict() if self.quote else None,
+            "invested_amount": decimal_text(self.invested_amount),
+            "current_value": decimal_text(self.current_value),
+            "profit_loss": decimal_text(self.profit_loss),
+            "return_percent": decimal_text(self.return_percent),
+            "portfolio_weight_percent": decimal_text(
+                self.portfolio_weight_percent
+            ),
+            "change_since_previous": (
+                self.change_since_previous.to_dict()
+                if self.change_since_previous
+                else None
+            ),
+            "market_data_note": self.market_data_note,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "PositionPerformance":
+        def optional_decimal(field: str) -> Decimal | None:
+            raw = value.get(field)
+            return Decimal(str(raw)) if raw is not None else None
+
+        return cls(
+            position=Position.from_dict(value["position"]),
+            quote=(
+                MarketQuote.from_dict(value["quote"])
+                if value.get("quote") is not None
+                else None
+            ),
+            invested_amount=Decimal(str(value["invested_amount"])),
+            current_value=optional_decimal("current_value"),
+            profit_loss=optional_decimal("profit_loss"),
+            return_percent=optional_decimal("return_percent"),
+            portfolio_weight_percent=optional_decimal(
+                "portfolio_weight_percent"
+            ),
+            change_since_previous=(
+                PositionChange.from_dict(value["change_since_previous"])
+                if value.get("change_since_previous")
+                else None
+            ),
+            market_data_note=str(value.get("market_data_note", "")),
+        )
+
+
+@dataclass(frozen=True)
+class PortfolioPerformance:
+    portfolio_revision: int
+    calculated_at: str
+    currency: str
+    total_invested: Decimal
+    current_value: Decimal | None
+    profit_loss: Decimal | None
+    return_percent: Decimal | None
+    complete_market_data: bool
+    positions: tuple[PositionPerformance, ...]
+    message: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "portfolio_revision": self.portfolio_revision,
+            "calculated_at": self.calculated_at,
+            "currency": self.currency,
+            "total_invested": decimal_text(self.total_invested),
+            "current_value": decimal_text(self.current_value),
+            "profit_loss": decimal_text(self.profit_loss),
+            "return_percent": decimal_text(self.return_percent),
+            "complete_market_data": self.complete_market_data,
+            "positions": [position.to_dict() for position in self.positions],
+            "message": self.message,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "PortfolioPerformance":
+        def optional_decimal(field: str) -> Decimal | None:
+            raw = value.get(field)
+            return Decimal(str(raw)) if raw is not None else None
+
+        return cls(
+            portfolio_revision=int(value["portfolio_revision"]),
+            calculated_at=str(value["calculated_at"]),
+            currency=str(value.get("currency", "USD")),
+            total_invested=Decimal(str(value["total_invested"])),
+            current_value=optional_decimal("current_value"),
+            profit_loss=optional_decimal("profit_loss"),
+            return_percent=optional_decimal("return_percent"),
+            complete_market_data=bool(value["complete_market_data"]),
+            positions=tuple(
+                PositionPerformance.from_dict(item)
+                for item in value.get("positions", [])
+            ),
+            message=str(value.get("message", "")),
+        )
+
+
+@dataclass(frozen=True)
+class SourceReference:
+    publisher: str
+    url: str
+    retrieved_at: str
+    authority: SourceAuthority
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "publisher": self.publisher,
+            "url": self.url,
+            "retrieved_at": self.retrieved_at,
+            "authority": self.authority.value,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "SourceReference":
+        return cls(
+            publisher=str(value["publisher"]),
+            url=str(value["url"]),
+            retrieved_at=str(value["retrieved_at"]),
+            authority=SourceAuthority(str(value["authority"])),
+        )
+
+
+@dataclass(frozen=True)
+class EvidenceItem:
+    statement: str
+    kind: EvidenceKind
+    sources: tuple[SourceReference, ...]
+    event_time: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "statement": self.statement,
+            "kind": self.kind.value,
+            "event_time": self.event_time,
+            "sources": [source.to_dict() for source in self.sources],
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "EvidenceItem":
+        return cls(
+            statement=str(value["statement"]),
+            kind=EvidenceKind(str(value["kind"])),
+            event_time=(
+                str(value["event_time"])
+                if value.get("event_time") is not None
+                else None
+            ),
+            sources=tuple(
+                SourceReference.from_dict(item)
+                for item in value.get("sources", [])
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class Catalyst:
+    event: str
+    timing: str
+    status: CatalystStatus
+    sources: tuple[SourceReference, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event": self.event,
+            "timing": self.timing,
+            "status": self.status.value,
+            "sources": [source.to_dict() for source in self.sources],
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "Catalyst":
+        return cls(
+            event=str(value["event"]),
+            timing=str(value["timing"]),
+            status=CatalystStatus(str(value["status"])),
+            sources=tuple(
+                SourceReference.from_dict(item)
+                for item in value.get("sources", [])
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class HoldingRecommendation:
+    symbol: str
+    action: RecommendationAction
+    action_detail: str
+    why: str
+    future_catalyst: Catalyst
+    change_condition: str
+    main_risk: str
+    confidence: Confidence
+    evidence: tuple[EvidenceItem, ...]
+    researched_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "action": self.action.value,
+            "action_detail": self.action_detail,
+            "why": self.why,
+            "future_catalyst": self.future_catalyst.to_dict(),
+            "change_condition": self.change_condition,
+            "main_risk": self.main_risk,
+            "confidence": self.confidence.value,
+            "evidence": [item.to_dict() for item in self.evidence],
+            "researched_at": self.researched_at,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "HoldingRecommendation":
+        return cls(
+            symbol=normalize_symbol(str(value["symbol"])),
+            action=RecommendationAction(str(value["action"])),
+            action_detail=str(value["action_detail"]),
+            why=str(value["why"]),
+            future_catalyst=Catalyst.from_dict(value["future_catalyst"]),
+            change_condition=str(value["change_condition"]),
+            main_risk=str(value["main_risk"]),
+            confidence=Confidence(str(value["confidence"])),
+            evidence=tuple(
+                EvidenceItem.from_dict(item)
+                for item in value.get("evidence", [])
+            ),
+            researched_at=str(value["researched_at"]),
+        )
+
+
+@dataclass(frozen=True)
+class PortfolioAnalysisBatch:
+    status: ProviderStatus
+    recommendations: tuple[HoldingRecommendation, ...]
+    researched_at: str
+    message: str
+
+
+@dataclass(frozen=True)
+class OpportunityCandidate:
+    symbol: str
+    rating: OpportunityRating
+    catalyst: Catalyst
+    why_it_may_move: str
+    why_it_may_be_mispriced: str
+    entry_condition: str
+    target_range: str
+    exit_plan: str
+    holding_period: str
+    maximum_position_percent: Decimal
+    risk_class: OpportunityRiskClass
+    main_risk: str
+    confidence: Confidence
+    expected_upside_percent: Decimal
+    risk_score: int
+    ranking_score: Decimal
+    evidence: tuple[EvidenceItem, ...]
+    researched_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "rating": self.rating.value,
+            "catalyst": self.catalyst.to_dict(),
+            "why_it_may_move": self.why_it_may_move,
+            "why_it_may_be_mispriced": self.why_it_may_be_mispriced,
+            "entry_condition": self.entry_condition,
+            "target_range": self.target_range,
+            "exit_plan": self.exit_plan,
+            "holding_period": self.holding_period,
+            "maximum_position_percent": decimal_text(
+                self.maximum_position_percent
+            ),
+            "risk_class": self.risk_class.value,
+            "main_risk": self.main_risk,
+            "confidence": self.confidence.value,
+            "expected_upside_percent": decimal_text(
+                self.expected_upside_percent
+            ),
+            "risk_score": self.risk_score,
+            "ranking_score": decimal_text(self.ranking_score),
+            "evidence": [item.to_dict() for item in self.evidence],
+            "researched_at": self.researched_at,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "OpportunityCandidate":
+        return cls(
+            symbol=normalize_symbol(str(value["symbol"])),
+            rating=OpportunityRating(str(value["rating"])),
+            catalyst=Catalyst.from_dict(value["catalyst"]),
+            why_it_may_move=str(value["why_it_may_move"]),
+            why_it_may_be_mispriced=str(value["why_it_may_be_mispriced"]),
+            entry_condition=str(value["entry_condition"]),
+            target_range=str(value["target_range"]),
+            exit_plan=str(value["exit_plan"]),
+            holding_period=str(value["holding_period"]),
+            maximum_position_percent=Decimal(
+                str(value["maximum_position_percent"])
+            ),
+            risk_class=OpportunityRiskClass(str(value["risk_class"])),
+            main_risk=str(value["main_risk"]),
+            confidence=Confidence(str(value["confidence"])),
+            expected_upside_percent=Decimal(
+                str(value["expected_upside_percent"])
+            ),
+            risk_score=int(value["risk_score"]),
+            ranking_score=Decimal(str(value["ranking_score"])),
+            evidence=tuple(
+                EvidenceItem.from_dict(item)
+                for item in value.get("evidence", [])
+            ),
+            researched_at=str(value["researched_at"]),
+        )
+
+
+@dataclass(frozen=True)
+class OpportunityScanBatch:
+    status: ProviderStatus
+    candidates: tuple[OpportunityCandidate, ...]
+    researched_at: str
+    message: str
+
+
+@dataclass(frozen=True)
+class SkillRunResult:
+    skill: str
+    status: RunStatus
+    portfolio_revision: int
+    output: dict[str, Any]
+    message: str
+    created_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "skill": self.skill,
+            "status": self.status.value,
+            "portfolio_revision": self.portfolio_revision,
+            "output": self.output,
+            "message": self.message,
+            "created_at": self.created_at,
         }
