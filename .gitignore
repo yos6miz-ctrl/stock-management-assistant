@@ -1,4 +1,12 @@
-outputs/*
-work/*
-!outputs/.gitkeep
-!work/.gitkeep
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+dist/
+build/
+state/
+*.db
+*.db-shm
+*.db-wal
+.env
